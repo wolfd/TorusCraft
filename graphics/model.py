@@ -7,11 +7,15 @@ from .blocks import BLOCKS
 from .config import *
 from .helpers import cube_vertices, texture_map, get_chunk
 
+import numpy as np
+from numpy.linalg import norm
+
 class Model(object):
     """
     Stores world and player data, with methods to modify blocks.
     """
-    def __init__(self, world=None):
+    def __init__(self, size, world=None):
+        self.size = size
         # Batch of pyglet VertexLists; everything loaded into the batch is drawn
         self.batch = Batch()
 
@@ -154,7 +158,7 @@ class Model(object):
         texture_location = BLOCKS[self.world[position]]['texture']
 
         # Convert cube coordinates and texture position to OpenGl vertices
-        vertex_data = cube_vertices(position, 1)
+        vertex_data = self.convert_coordinates(cube_vertices(position, 1))
         texture_data = texture_map(*texture_location)
 
         # Add the cube to the batch, mapping texture vertices to cube vertices.
@@ -162,12 +166,52 @@ class Model(object):
             ('v3f/static', vertex_data),
             ('t2f/static', texture_data))
 
+
+    def generate_rotation(self, position):
+        theta = ((float(position[0]) / float(self.size[0])) % 1.0) * 2.0 * math.pi
+        phi = ((float(position[2]) / float(self.size[1])) % 1.0) * 2.0 * math.pi
+
+        return (theta, phi)
+
+    def convert_rotation(self, position, rotation):
+        return [p[0] + p[1] for p in zip(self.generate_rotation(position), rotation)]
+
+    def convert_coordinate(self, position):
+        ring_radius = self.size[0] / (2.0 * math.pi)
+        internal_radius = self.size[1] / (2.0 * math.pi)
+
+        theta, phi = self.generate_rotation(position)
+
+        rho = (float(position[1]) + internal_radius)
+
+        x = (ring_radius + rho * math.sin(theta)) * math.cos(phi)
+        y = rho * math.cos(theta)
+        z = (ring_radius + rho * math.sin(theta)) * math.sin(phi)
+
+        return [x, y, z]
+
+    def convert_coordinates(self, positions):
+        return np.asarray([self.convert_coordinate(c) for c in np.asarray(positions).reshape((len(positions)//3,3))]).flatten().tolist()
+
+    def generate_normal(self, position, direction):
+        p1 = np.asarray(self.convert_coordinate(position))
+
+        p2 = np.asarray(self.convert_coordinate(np.asarray(position) + direction))
+
+        n = p2 - p1
+        return n / norm(n)
+
+
     def hide_block(self, position):
         """
         Stop a block from being rendered.
         """
         # Remove from the batch by deleting the vertex list
-        self.vertices.pop(position).delete()
+        try:
+            self.vertices.pop(position).delete()
+        except KeyError:
+            print('Unload failed at position: ({}, {}, {})'.format(*position))
+
 
     def check_exposed(self, position):
         """

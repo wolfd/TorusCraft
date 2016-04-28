@@ -7,7 +7,7 @@ TICKS = 60
 FOV = 60.0
 
 # Render distance in meters
-RENDER_DISTANCE = 250
+RENDER_DISTANCE = 250.0
 
 # Vectors representing directions normal to each face of a cube.
 DIRECTIONS = [(1, 0, 0),

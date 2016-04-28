@@ -9,6 +9,8 @@ from .model import Model
 from .controls import *
 from .helpers import get_chunk
 
+import numpy as np
+
 class Window(pyglet.window.Window):
     """
     Combination of view and controller functionality. Interfaces with the model.
@@ -18,10 +20,12 @@ class Window(pyglet.window.Window):
         Updates physics.
     """
 
-    def __init__(self, world=None, *args, **kwargs):
+    def __init__(self, world_size, world=None, *args, **kwargs):
         super(Window, self).__init__(*args, **kwargs)
 
-        self.model = Model(world)
+        self.speed_coef = 1.0
+
+        self.model = Model(world_size, world)
 
         # Don't capture the mouse at first
         self.exclusive = False
@@ -36,6 +40,7 @@ class Window(pyglet.window.Window):
 
         # Set the game to update physics
         pyglet.clock.schedule_interval(self.update, 1.0 / TICKS)
+
 
     def set_exclusive_mouse(self, exclusive):
         """
@@ -96,6 +101,10 @@ class Window(pyglet.window.Window):
             self.set_exclusive_mouse(False)
         elif symbol in MOVE:
             self.model.motion[MOVE[symbol][0]] += MOVE[symbol][1]
+        elif symbol == key.MINUS:
+            self.speed_coef -= 1.0
+        elif symbol == key.EQUAL:
+            self.speed_coef += 1.0
 
     def on_key_release(self, symbol, modifiers):
         """
@@ -136,9 +145,21 @@ class Window(pyglet.window.Window):
         # Note: glRotatef takes the number of degrees to rotate, then the axis to rotate around
         # (the axis is specified by an x, y, z vector)
         glRotatef(xz, 0, 1, 0)
-        # The up-down rotation is around an axis orthogonal to the current sight vector
         glRotatef(-yz, math.cos(math.radians(xz)), 0, math.sin(math.radians(xz)))
-        x, y, z = self.model.position
+
+        pos = np.asarray(self.model.position)
+
+        # plus_x = self.model.generate_normal(pos, (1,0,0))
+        plus_y = self.model.generate_normal(pos, (0,1,0))
+        plus_z = self.model.generate_normal(pos, (0,0,1))
+
+
+        torus_theta, torus_phi = self.model.generate_rotation(self.model.position)
+
+        glRotatef(math.degrees(torus_theta), *plus_z)
+        glRotatef(math.degrees(torus_phi), *plus_y)
+
+        x, y, z = self.model.convert_coordinate(self.model.position)
         glTranslatef(-x, -y, -z)
 
     def set_2d(self):
@@ -170,7 +191,7 @@ class Window(pyglet.window.Window):
         """
         Return the position of the block the player is currently looking at.
         """
-        direction = self.get_sight_vector()
+        direction = self.model.convert_coordinate(self.get_sight_vector())
         # This needs work
 
     def get_sight_vector(self):
@@ -220,7 +241,7 @@ class Window(pyglet.window.Window):
         # Update player position
         x, y, z = self.model.position
         dx, dy, dz = self.get_motion_vector()
-        x += dx * WALKING_SPEED * dt
-        y += dy * FLYING_SPEED * dt
-        z += dz * WALKING_SPEED * dt
+        x += dx * WALKING_SPEED * self.speed_coef * dt
+        y += dy * FLYING_SPEED * self.speed_coef * dt
+        z += dz * WALKING_SPEED * self.speed_coef * dt
         self.model.position = (x, y, z)
